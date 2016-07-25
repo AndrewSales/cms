@@ -1,7 +1,7 @@
 # cms
 XQuery-based content management
 
-##Serivce-based:
+##Service-based:
 1. Link
 2. Classify (may be seen as a type of linking)
 2. Transform
