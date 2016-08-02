@@ -1,0 +1,112 @@
+<?xml-stylesheet href="xsltforms/xsltforms.xsl" type="text/xsl"?>
+<?css-conversion no?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:xf="http://www.w3.org/2002/xforms"
+  xmlns:ev="http://www.w3.org/2001/xml-events"
+  xmlns:tei="http://www.tei-c.org/ns/1.0">
+  <head>
+    <title>XSLTForms</title>
+
+    <!--XForms data models -->
+    <xf:model>
+      <xf:instance>
+        <Data xmlns="">
+          <keywords><keyword/></keywords>
+          <facets><facet/></facets>
+        </Data>
+      </xf:instance>
+    </xf:model>
+
+    <!-- read the codes from an external file into this model -->
+    <xf:model id="taxonomy">
+      <xf:instance src="taxonomy.xml"></xf:instance>
+    </xf:model>
+
+    <xf:model id="keywords">
+      <xf:instance src="keywords.xml"></xf:instance>
+    </xf:model>
+  </head>
+
+  <body>
+    <div>
+    <h2>Repeatable items from a dropdown</h2>
+      <h2>Keyword(s):</h2>
+      <xf:group>
+        <xf:repeat id="repeat-keyword" nodeset='keywords/keyword' appearance='compact'>
+          
+          <xf:select1 ref="." appearance="minimal" incremental='true' id="foo">
+            <xf:label>Select keyword: </xf:label>
+            <xf:itemset model="keywords" nodeset="keyword">
+              <xf:label ref="label"/>
+              <xf:value ref="value"/>
+            </xf:itemset>
+          </xf:select1>
+          
+          <xf:trigger>
+            <xf:label>X</xf:label>
+            <xf:delete nodeset="." at="1" if="count(//keyword) > 1" ev:event="DOMActivate"></xf:delete>
+          </xf:trigger>
+          
+        </xf:repeat>
+        <xf:trigger>
+          <xf:label>New</xf:label>
+          <xf:insert nodeset="keywords/keyword" at="index('repeat-keyword')"
+            position="after" ev:event="DOMActivate" />
+          <!--
+            TODO: reset the dropdown (it starts at the last value chosen atm)
+            <xf:action ev:event="xforms-reset">
+            <xf:setfocus control="foo" />
+          </xf:action>-->
+        </xf:trigger>
+      </xf:group>
+    </div>
+    <div>
+      <xf:output ref="keyword">
+        <xf:label>Keyword: </xf:label>
+      </xf:output>
+    </div>
+    <div>
+      <h2>Facets:</h2>
+      <!--<xf:select1 ref="facet" appearance="minimal" incremental="true">
+        <xf:label>Select facet: </xf:label>
+        <xf:itemset model="taxonomy" nodeset="facet"><!-\- N.B. we can filter! e.g [@type='topic'] -\->
+          <xf:label ref="name"></xf:label>
+          <xf:value ref="value"></xf:value>
+        </xf:itemset>
+      </xf:select1>
+    </div>
+    <div>
+      <xf:output ref="facet">
+        <xf:label>Facet: </xf:label>
+      </xf:output>-->
+      
+      <xf:group>
+        <xf:repeat id="repeat-facet" nodeset='facets/facet' appearance='compact'>
+          
+          <xf:select1 ref="." appearance="minimal" incremental='true'>
+            <xf:label>Select facet: </xf:label>
+            <xf:itemset model="taxonomy" nodeset="facet">
+              <xf:label ref="name"/>
+              <xf:value ref="value"/>
+            </xf:itemset>
+          </xf:select1>
+          
+          <xf:trigger>
+            <xf:label>X</xf:label>
+            <xf:delete nodeset="." at="1" if="count(//facet) > 1" ev:event="DOMActivate"></xf:delete>
+          </xf:trigger>
+          
+        </xf:repeat>
+        <xf:trigger>
+          <xf:label>New</xf:label>
+          <xf:insert nodeset="facets/facet" at="index('repeat-facet')"
+            position="after" ev:event="DOMActivate" />
+          <!--
+            TODO: reset the dropdown (it starts at the last value chosen atm)
+            <xf:action ev:event="xforms-reset">
+            <xf:setfocus control="foo" />
+          </xf:action>-->
+        </xf:trigger>
+      </xf:group>
+    </div>
+  </body>
+</html>
