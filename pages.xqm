@@ -3,30 +3,41 @@ module namespace cms = "http://www.andrewsales.com/xquery";
 
 declare variable $cms:collConfig := doc('/ContentBase/collection/config/user-edit-permissions.xml');
 declare variable $cms:collBase := $cms:collConfig/collection/@xml:base;
+declare variable $cms:user := user:current();
 
+(:Files assigned to the current user:)
+declare variable $cms:myColl as element(file)* := 
+         $cms:collConfig/collection/user[
+             if($cms:user = 'admin')
+             then true()
+             else @name = $cms:user
+           ]/file[exists(
+            collection( $cms:collBase || '/' || @url )
+                )];
+
+(:~
+ : Displays files available for the current user,
+ : or all in the collection if logged in as admin.
+ :) 
 declare 
   %rest:path("/ContentBase/collection") 
   %output:method("html")
 function cms:collection() 
 as element(html)
 {
-  let $user := user:current()
-  return
-   <html>
+  <html>
      <head>
        <title>ContentBase</title>
      </head>
      <body>       
-       <h1>Documents for <code>{$user}</code></h1>
+       <div>Documents for: <span>{$cms:user}</span></div>
        {
-         for $doc in collection($cms:collBase)
-           let $fn := tokenize($doc/base-uri(), '/')[last()]
-           where $fn = $cms:collConfig/collection/user[
-             if($user = 'admin')
-             then true()
-             else @name = $user
-           ]/file/@url
-           return <div><a href='toc?url={$fn}'>{$fn}</a></div>
+           for $file in $cms:myColl
+           let $doc := doc(string-join(($cms:collBase, $file/@url), '/'))
+           return 
+           <div><a href='toc?url={$file/@url}'>{substring-before($file/@url/data(), '.xml')}</a>
+           {($doc//*:author[not(@role)])[1]/*:persName[@type='default'][lang('en')], $doc//*:title[@type='originalFull']/data()}
+           </div>
        }
      </body>
    </html>
@@ -37,75 +48,60 @@ declare
   %rest:query-param("url", "{$url}")
   %output:method("html")
 function cms:toc($url) 
-as element(html)
+as document-node()
 {
-  <html>
-     <head>
-       <title>{$url} - Table of contents</title>
-     </head>
-     <body>       
-       <h1>{$url}</h1>
-       {
-         (:TODO: make it work for actual ToCs - call XSLT on TEI/text//div? :)
-         for $f in doc($cms:collBase || '/' || $url)/*/*:facsimile
-           let $id := $f/@xml:id/data()
-           return <div><a href='page?url={$url}&amp;id={$id}'>{$id}</a></div>
-       }
-     </body>
-   </html>
+    (:let $thisFile := $cms:myColl[@url = $url]:)
+  
+  xslt:transform(
+             doc($cms:collBase || '/' || $url),
+             doc('xsl/toc.xsl'),
+             map{'sys-id':$url}
+             )
 };
 
-(:TODO: titles:)
 declare 
-  %rest:path("/ContentBase/title") 
+  %rest:path("/ContentBase/work") 
   %rest:query-param("url", "{$url}")
   %rest:query-param("id", "{$id}")
   %output:method("html")
 function cms:work($url, $id) 
-as element(html)
+as document-node()
 {
-  <html>
-     <head>
-       <title>{$url} - title view</title>
-     </head>
-     <body>       
-       <h1>{$url}</h1>
-       {
-         (:TODO: make it work for actual titles:)
-         
-       }
-     </body>
-   </html>
+  xslt:transform(
+             doc($cms:collBase || '/' || $url),
+             doc('xsl/work.xsl'),
+             map{'sys-id':$url, 'id':$id}
+             )
 };
 
-(:TODO: how do we pass the XML for this facsimile?:)
+declare 
+  %rest:path("/ContentBase/section") 
+  %rest:query-param("url", "{$url}")
+  %rest:query-param("id", "{$id}")
+  %output:method("html")
+function cms:section($url, $id) 
+as document-node()
+{
+  xslt:transform(
+             doc($cms:collBase || '/' || $url),
+             doc('xsl/section.xsl'),
+             map{'sys-id':$url, 'id':$id}
+             )
+};
+
 declare 
   %rest:path("/ContentBase/page") 
   %rest:query-param("id", "{$id}")
   %rest:query-param("url", "{$url}")
-  %output:method("html")
+  %output:method("xhtml")
 function cms:page($url, $id) 
-as element(html)
+as document-node()
 {
-  <html>
-     <head>
-       <title>{$url}, page {$id}</title>
-     </head>
-     <body>       
-       <h1>{$url}</h1>
-       <h2>{$id}</h2>
-       {
-         (:TODO: make it work for actual pages:)
-         let $facs := doc($cms:collBase || '/' || $url)/*/*:facsimile[@xml:id=$id]
-         return
-           <div>
-             <a href='https://path/to/images/{$facs/*:graphic/@url}'>
-             {$facs/*:graphic/@url/data()}
-             </a>
-           </div>
-       }
-     </body>
-   </html>
+  xslt:transform(
+             doc($cms:collBase || '/' || $url),
+             doc('xsl/page.xsl'),
+             map{'sys-id':$url, 'id':$id}
+             )
 };
 
 declare 
@@ -150,7 +146,8 @@ function cms:login()
 
     <div class="container">
 
-      <form class="form-signin" action='checkLogin' method='post'>
+      <!--<form class="form-signin" action='checkLogin' method='post'>-->
+      <form class="form-signin" action='collection' method='post'>
         <h2 class="form-signin-heading">Please sign in</h2>
         <label for="inputEmail" class="sr-only">Email address</label>
         <input type="email" id="inputEmail" class="form-control" placeholder="Email address" required='' autofocus=''/>
@@ -174,10 +171,10 @@ function cms:login()
 
 };
 
-declare 
+(:declare 
   %rest:path("/ContentBase/login")
   %output:method("html")
 function cms:checkLogin()
 {
   
-};
+};:)
