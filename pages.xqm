@@ -171,6 +171,20 @@ function cms:login()
 
 };
 
+declare 
+  %updating
+  %rest:path("/ContentBase/test")
+  %rest:POST("{$body}")
+  %rest:query-param("url", "{$url}")
+  %rest:query-param("lang", "{$lang}")
+  %output:method("html")
+function cms:test($body, $url, $lang)
+{
+    let $path := '/collection/content/review/' || $url || '.xml@' || $lang
+    let $doc := <metadata when='{current-dateTime()}' who='{$cms:user}'>{$body/*/*}</metadata>
+    return db:replace('ContentBase', $path, $doc)
+};
+
 (:declare 
   %rest:path("/ContentBase/login")
   %output:method("html")
