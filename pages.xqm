@@ -1,19 +1,25 @@
 xquery version "3.0";
-module namespace cms = "http://www.andrewsales.com/xquery"; 
+module namespace cms = "http://www.andrewsales.com/xquery";
+import module namespace request = "http://exquery.org/ns/request";
+import module namespace session = "http://basex.org/modules/session";
+
 
 declare variable $cms:collConfig := doc('/ContentBase/collection/config/user-edit-permissions.xml');
 declare variable $cms:collBase := $cms:collConfig/collection/@xml:base;
 declare variable $cms:user := user:current();
 
 (:Files assigned to the current user:)
-declare variable $cms:myColl as element(file)* := 
-         $cms:collConfig/collection/user[
-             if($cms:user = 'admin')
-             then true()
-             else @name = $cms:user
-           ]/file[exists(
-            collection( $cms:collBase || '/' || @url )
-                )];
+declare function cms:collection-for-user($user) 
+as element(file)*
+{
+ $cms:collConfig/collection/user[
+     if($user = 'admin')
+     then true()
+     else @name = $user
+   ]/file[exists(
+    collection( $cms:collBase || '/' || @url )
+        )]
+};
 
 (:~
  : Displays files available for the current user,
@@ -25,14 +31,17 @@ declare
 function cms:collection() 
 as element(html)
 {
+    (:TODO: handle lack of user :)
+  let $user := session:get("user")
+  return 
   <html>
      <head>
        <title>ContentBase</title>
      </head>
      <body>       
-       <div>Documents for: <span>{$cms:user}</span></div>
+       <div>Documents for: <span>{$user}</span></div>
        {
-           for $file in $cms:myColl
+           for $file in cms:collection-for-user($user)
            let $doc := doc(string-join(($cms:collBase, $file/@url), '/'))
            return 
            <div><a href='toc?url={$file/@url}'>{substring-before($file/@url/data(), '.xml')}</a>
@@ -146,18 +155,12 @@ function cms:login()
 
     <div class="container">
 
-      <!--<form class="form-signin" action='checkLogin' method='post'>-->
-      <form class="form-signin" action='collection' method='post'>
+      <form class="form-signin" action='authenticate' method='post'>
         <h2 class="form-signin-heading">Please sign in</h2>
         <label for="inputEmail" class="sr-only">Email address</label>
-        <input type="email" id="inputEmail" class="form-control" placeholder="Email address" required='' autofocus=''/>
+        <input id="inputEmail" name='username' class="form-control" placeholder="Email address" required='' autofocus=''/>
         <label for="inputPassword" class="sr-only">Password</label>
-        <input type="password" id="inputPassword" class="form-control" placeholder="Password" required=''/>
-        <div class="checkbox">
-          <label>
-            <input type="checkbox" value="remember-me"/> Remember me
-          </label>
-        </div>
+        <input name='password' type="password" id="inputPassword" class="form-control" placeholder="Password" required=''/>
         <button class="btn btn-lg btn-primary btn-block" type="submit">Sign in</button>
       </form>
 
@@ -185,10 +188,29 @@ function cms:test($body, $url, $lang)
     return db:replace('ContentBase', $path, $doc)
 };
 
-(:declare 
-  %rest:path("/ContentBase/login")
+declare 
+  %rest:path("/ContentBase/authenticate")
+  %rest:POST
   %output:method("html")
-function cms:checkLogin()
+  %rest:form-param("username", "{$username}", "(none)")
+  %rest:form-param("password", "{$password}", "(none)")
+function cms:checkLogin($username, $password)
 {
+  if(cms:check($username, $password))
+  then
+    (session:set("user", string($username)),
+    <rest:redirect>/ContentBase/collection</rest:redirect>)
+    else "BAD!!"    (:TODO: something more graceful...:)
   
-};:)
+};
+
+(:taken from https://github.com/BaseXdb/basex/issues/1326,
+pending release of 8.6 and user:check-user() :)
+declare function cms:check($name as xs:string, $password as xs:string)
+as xs:boolean
+{
+  let $pw := user:list-details($name)/password[@algorithm = 'salted-sha256']
+  let $hash := lower-case(string(xs:hexBinary(hash:sha256($pw/salt || $password))))
+  return $pw/hash = $hash
+  
+};
