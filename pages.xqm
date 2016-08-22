@@ -6,6 +6,7 @@ import module namespace session = "http://basex.org/modules/session";
 
 declare variable $cms:collConfig := doc('/ContentBase/collection/config/user-edit-permissions.xml');
 declare variable $cms:collBase := $cms:collConfig/collection/@xml:base;
+declare variable $cms:reviewBase := $cms:collBase/../review;
 declare variable $cms:user := user:current();
 
 (:Files assigned to the current user:)
@@ -28,12 +29,12 @@ as element(file)*
 declare 
   %rest:path("/ContentBase/collection") 
   %output:method("html")
-function cms:collection() 
+  %rest:cookie-param("user", "{$user}")
+function cms:collection($user) 
 as element(html)
 {
     (:TODO: handle lack of user :)
-  let $user := session:get("user")
-  return 
+  
   <html>
      <head>
        <title>ContentBase</title>
@@ -68,18 +69,36 @@ as document-node()
              )
 };
 
+(:N.B. OUTPUT METHOD MUST BE XML:)
 declare 
   %rest:path("/ContentBase/work") 
+  %rest:GET
   %rest:query-param("url", "{$url}")
   %rest:query-param("id", "{$id}")
-  %output:method("html")
+  %output:method("xml") 
+  %output:omit-xml-declaration("yes")
+  %output:indent("no")
 function cms:work($url, $id) 
 as document-node()
 {
-  xslt:transform(
+  let $reviewURL := $cms:reviewBase || '/' || $url
+
+  return
+  if(doc-available($reviewURL))
+  then
+    xslt:transform(
+             doc($reviewURL),
+             doc('xsl/metadata2xform.xsl')
+             )
+    else
+    xslt:transform(
              doc($cms:collBase || '/' || $url),
-             doc('xsl/work.xsl'),
-             map{'sys-id':$url, 'id':$id}
+             doc('xsl/tei2xform.xsl'),
+             map{
+                'sys-id':$url, 
+                'id':$id, 
+                'xsltformsStylesheet':'../static/xsltforms/xsltforms.xsl'
+                }
              )
 };
 
@@ -183,8 +202,12 @@ declare
   %output:method("html")
 function cms:test($body, $url, $lang)
 {
-    let $path := '/collection/content/review/' || $url || '.xml@' || $lang
-    let $doc := <metadata when='{current-dateTime()}' who='{$cms:user}'>{$body/*/*}</metadata>
+    let $path := '/collection/content/review/' || $url || '@' || $lang
+    let $doc := 
+        <metadata when='{current-dateTime()}' who='{session:get("user")}'>
+            {$body/metadata/@xml:id}
+            {$body/*/*}
+        </metadata>
     return db:replace('ContentBase', $path, $doc)
 };
 
@@ -198,8 +221,14 @@ function cms:checkLogin($username, $password)
 {
   if(cms:check($username, $password))
   then
+    (:TODO: add Secure for HTTPS; set Expires or Max-Age:)
     (session:set("user", string($username)),
-    <rest:redirect>/ContentBase/collection</rest:redirect>)
+        <rest:response>
+      <http:response status='302'>    
+        <http:header name="Set-Cookie" value="user={$username}; HttpOnly; path=/"/>
+        <http:header name="location" value="/ContentBase/collection"/>
+      </http:response>
+    </rest:response>)
     else "BAD!!"    (:TODO: something more graceful...:)
   
 };
