@@ -3,14 +3,14 @@ module namespace cms = "http://www.andrewsales.com/xquery";
 import module namespace request = "http://exquery.org/ns/request";
 import module namespace session = "http://basex.org/modules/session";
 
-
+(:TODO make these discoverable from a central config:)
 declare variable $cms:collConfig := doc('/ContentBase/collection/config/user-edit-permissions.xml');
 declare variable $cms:collBase := $cms:collConfig/collection/@xml:base;
-declare variable $cms:reviewBase := $cms:collBase/../review;
-declare variable $cms:user := user:current();
+declare variable $cms:reviewBase := '/ContentBase/collection/content/review';
+declare variable $cms:xsltFormsLoc := '../static/xsltforms/xsltforms.xsl';
 
 (:Files assigned to the current user:)
-declare function cms:collection-for-user($user) 
+declare function cms:user-collection($user) 
 as element(file)*
 {
  $cms:collConfig/collection/user[
@@ -42,7 +42,7 @@ as element(html)
      <body>       
        <div>Documents for: <span>{$user}</span></div>
        {
-           for $file in cms:collection-for-user($user)
+           for $file in cms:user-collection($user)
            let $doc := doc(string-join(($cms:collBase, $file/@url), '/'))
            return 
            <div><a href='toc?url={$file/@url}'>{substring-before($file/@url/data(), '.xml')}</a>
@@ -75,20 +75,24 @@ declare
   %rest:GET
   %rest:query-param("url", "{$url}")
   %rest:query-param("id", "{$id}")
+  %rest:query-param("lang", "{$lang}")
   %output:method("xml") 
   %output:omit-xml-declaration("yes")
   %output:indent("no")
-function cms:work($url, $id) 
+function cms:work($url, $id, $lang) 
 as document-node()
 {
-  let $reviewURL := $cms:reviewBase || '/' || $url
+  let $reviewURL := $cms:reviewBase || '/' || $url || '.xml@' || $lang
 
   return
   if(doc-available($reviewURL))
   then
     xslt:transform(
              doc($reviewURL),
-             doc('xsl/metadata2xform.xsl')
+             doc('xsl/metadata2xform.xsl'),
+             map{
+                'xsltformsStylesheet':$cms:xsltFormsLoc
+                }
              )
     else
     xslt:transform(
@@ -97,7 +101,7 @@ as document-node()
              map{
                 'sys-id':$url, 
                 'id':$id, 
-                'xsltformsStylesheet':'../static/xsltforms/xsltforms.xsl'
+                'xsltformsStylesheet':$cms:xsltFormsLoc
                 }
              )
 };
@@ -195,16 +199,17 @@ function cms:login()
 
 declare 
   %updating
-  %rest:path("/ContentBase/test")
+  %rest:path("/ContentBase/save")
   %rest:POST("{$body}")
   %rest:query-param("url", "{$url}")
   %rest:query-param("lang", "{$lang}")
+  %rest:cookie-param("user", "{$user}")
   %output:method("html")
-function cms:test($body, $url, $lang)
+function cms:save($body, $url, $lang, $user)
 {
-    let $path := '/collection/content/review/' || $url || '@' || $lang
+    let $path := '/collection/content/review/' || $url || '.xml@' || $lang
     let $doc := 
-        <metadata when='{current-dateTime()}' who='{session:get("user")}'>
+        <metadata when='{current-dateTime()}' who='{$user}'>
             {$body/metadata/@xml:id}
             {$body/*/*}
         </metadata>
