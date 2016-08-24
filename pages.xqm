@@ -2,10 +2,12 @@ xquery version "3.0";
 module namespace cms = "http://www.andrewsales.com/xquery";
 import module namespace request = "http://exquery.org/ns/request";
 import module namespace session = "http://basex.org/modules/session";
+declare namespace tei = "http://www.tei-c.org/ns/1.0";
 
 (:TODO make these discoverable from a central config:)
 declare variable $cms:collConfig := doc('/ContentBase/collection/config/user-edit-permissions.xml');
 declare variable $cms:collBase := $cms:collConfig/collection/@xml:base;
+declare variable $cms:contentBase := '/ContentBase/collection/content/main';
 declare variable $cms:reviewBase := '/ContentBase/collection/content/review';
 declare variable $cms:xsltFormsLoc := '../static/xsltforms/xsltforms.xsl';
 
@@ -73,66 +75,93 @@ as document-node()
 declare 
   %rest:path("/ContentBase/work") 
   %rest:GET
-  %rest:query-param("url", "{$url}")
+  %rest:query-param("catNum", "{$catNum}")
   %rest:query-param("id", "{$id}")
   %rest:query-param("lang", "{$lang}")
   %output:method("xml") 
   %output:omit-xml-declaration("yes")
   %output:indent("no")
-function cms:work($url, $id, $lang) 
+function cms:work($catNum, $id, $lang) 
 as document-node()
 {
-  let $reviewURL := $cms:reviewBase || '/' || $url || '.xml@' || $lang
+  let $reviewURL := $cms:reviewBase || '/' || $catNum || '.xml@' || $lang
 
   return
   if(doc-available($reviewURL))
   then
-    xslt:transform(
+        xslt:transform(
              doc($reviewURL),
              doc('xsl/metadata2xform.xsl'),
              map{
+                'id':$id,
+                'lang':$lang,
                 'xsltformsStylesheet':$cms:xsltFormsLoc
                 }
              )
     else
-    xslt:transform(
-             doc($cms:collBase || '/' || $url),
+        xslt:transform(
+             doc($cms:collBase || '/' || $catNum || '.xml'),
              doc('xsl/tei2xform.xsl'),
              map{
-                'sys-id':$url, 
+                'sys-id':$catNum, 
                 'id':$id, 
-                'xsltformsStylesheet':$cms:xsltFormsLoc
+                'xsltformsStylesheet':$cms:xsltFormsLoc,
+                'lang':$lang
                 }
              )
 };
 
+declare function cms:get-url($url, $id, $lang)
+as xs:string
+{
+    let $reviewURL := $cms:reviewBase || '/' || $url || '.xml@' || $lang
+    return 
+        if(doc-available($reviewURL))
+        then $reviewURL
+        else $cms:collBase || '/' || $url
+};
+
 declare 
   %rest:path("/ContentBase/section") 
-  %rest:query-param("url", "{$url}")
+  %rest:query-param("catNum", "{$catNum}")
   %rest:query-param("id", "{$id}")
   %output:method("html")
-function cms:section($url, $id) 
+function cms:section($catNum, $id) 
 as document-node()
 {
   xslt:transform(
-             doc($cms:collBase || '/' || $url),
+             doc($cms:collBase || '/' || $catNum || '.xml'),
              doc('xsl/section.xsl'),
-             map{'sys-id':$url, 'id':$id}
+             map{'sys-id':$catNum, 'id':$id}
              )
 };
 
 declare 
   %rest:path("/ContentBase/page") 
+  %rest:GET
+  %rest:query-param("catNum", "{$catNum}")
   %rest:query-param("id", "{$id}")
-  %rest:query-param("url", "{$url}")
-  %output:method("xhtml")
-function cms:page($url, $id) 
+  %rest:query-param("lang", "{$lang}")
+  %output:method("xml") 
+  %output:omit-xml-declaration("yes")
+  %output:indent("no")
+function cms:page(
+    $catNum as xs:string, 
+    $id as xs:string,
+    $lang as xs:string
+    ) 
 as document-node()
 {
-  xslt:transform(
-             doc($cms:collBase || '/' || $url),
+    (:let $reviewURL := $cms:reviewBase || '/' || $url || '.xml@' || $lang:)
+    let $input := 
+        (:if(doc-available($reviewURL))
+        then doc($reviewURL)
+        else:) doc($cms:contentBase || '/' || $catNum || '.xml')/tei:TEI/tei:facsimile[@xml:id=$id]
+
+  return xslt:transform(
+             $input,
              doc('xsl/page.xsl'),
-             map{'sys-id':$url, 'id':$id}
+             map{'catNum':$catNum, 'id':$id, 'lang':$lang}
              )
 };
 
@@ -140,59 +169,55 @@ declare
   %rest:path("/ContentBase/login")
   %output:method("html")
 function cms:login()
-{
-  
+{    
+<html xmlns:tei="http://www.tei-c.org/ns/1.0" xmlns:xf="http://www.w3.org/2002/xforms"
+    xmlns:ev="http://www.w3.org/2001/xml-events">
 
-<html lang="en">
-  <head>
-    <meta charset="utf-8"/>
-    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
-    <meta name="description" content=""/>
-    <meta name="author" content=""/>
-    <link rel="icon" href="../../favicon.ico"/>
 
-    <title>Signin Template for Bootstrap</title>
+    <head>
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="description" content="" />
+        <meta name="author" content="" />
 
-    <!-- Latest compiled and minified CSS -->
+        <title>[Product name]</title>
+        
+        <!-- Latest compiled and minified CSS -->
 <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous"/>
 
-<!-- Optional theme -->
-<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css" integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous"/>
+        <link href="../static/style.css" rel="stylesheet" />
+        </head>
+    <body>
 
-<!-- Custom styles for this template -->
-    <link href="{resolve-uri('signin.css', static-base-uri())}" rel="stylesheet"/>
-
-<!-- Latest compiled and minified JavaScript -->
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
-
-    <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
-    <!--[if lt IE 9]>
-      <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
-      <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
-    <![endif]-->
-  </head>
-
-  <body>
-
-    <div class="container">
-
-      <form class="form-signin" action='authenticate' method='post'>
-        <h2 class="form-signin-heading">Please sign in</h2>
-        <label for="inputEmail" class="sr-only">Email address</label>
-        <input id="inputEmail" name='username' class="form-control" placeholder="Email address" required='' autofocus=''/>
-        <label for="inputPassword" class="sr-only">Password</label>
-        <input name='password' type="password" id="inputPassword" class="form-control" placeholder="Password" required=''/>
-        <button class="btn btn-lg btn-primary btn-block" type="submit">Sign in</button>
-      </form>
-
-    </div> <!-- /container -->
+        <div class="container">
+            <div class="col-lg-3"></div>
+            <div class="col-lg-6 ">
+                <form class="form-signin" action='authenticate' method='post'>
+                    <h2 class="form-signin-heading">Please sign in</h2>
+                    <div>
+                        <label for="inputEmail" class="sr-only">Email address</label>
+                        <!--<input type="email" id="inputEmail" class="form-control"
+                            placeholder="Email address" />-->
+                            <input name='username' id="inputEmail" class="form-control"
+                            placeholder="Email address"/>
+                    </div>
+                    <div>
+                        <label for="inputPassword" class="sr-only">Password</label>
+                        <input name='password' type="password" id="inputPassword" class="form-control"
+                            placeholder="Password" />
+                    </div>
+                    
+                    <button class="btn-lg btn-block text-center" type="submit">Sign in</button>
+                </form>
+            </div>
+            <div class="col-lg-3"></div>
+        </div>
+        <!-- /container -->
 
 
-    <!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
-    <script src="../../assets/js/ie10-viewport-bug-workaround.js"></script>
-  </body>
+
+    </body>
+
 </html>
 
 };
@@ -201,13 +226,14 @@ declare
   %updating
   %rest:path("/ContentBase/save")
   %rest:POST("{$body}")
-  %rest:query-param("url", "{$url}")
+  %rest:query-param("catNum", "{$catNum}")
+  %rest:query-param("id", "{$id}")
   %rest:query-param("lang", "{$lang}")
   %rest:cookie-param("user", "{$user}")
   %output:method("html")
-function cms:save($body, $url, $lang, $user)
+function cms:save($body, $catNum, $id, $lang, $user)
 {
-    let $path := '/collection/content/review/' || $url || '.xml@' || $lang
+    let $path := '/collection/content/review/' || $catNum || '/' || $id || '.xml@' || $lang
     let $doc := 
         <metadata when='{current-dateTime()}' who='{$user}'>
             {$body/metadata/@xml:id}
@@ -222,9 +248,9 @@ declare
   %output:method("html")
   %rest:form-param("username", "{$username}", "(none)")
   %rest:form-param("password", "{$password}", "(none)")
-function cms:checkLogin($username, $password)
+function cms:check-login($username, $password)
 {
-  if(cms:check($username, $password))
+  if(cms:check-user($username, $password))
   then
     (:TODO: add Secure for HTTPS; set Expires or Max-Age:)
     (session:set("user", string($username)),
@@ -240,7 +266,7 @@ function cms:checkLogin($username, $password)
 
 (:taken from https://github.com/BaseXdb/basex/issues/1326,
 pending release of 8.6 and user:check-user() :)
-declare function cms:check($name as xs:string, $password as xs:string)
+declare function cms:check-user($name as xs:string, $password as xs:string)
 as xs:boolean
 {
   let $pw := user:list-details($name)/password[@algorithm = 'salted-sha256']
