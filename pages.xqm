@@ -1,7 +1,7 @@
 xquery version "3.0";
 module namespace cms = "http://www.andrewsales.com/xquery";
-import module namespace request = "http://exquery.org/ns/request";
-import module namespace session = "http://basex.org/modules/session";
+(: import module namespace request = "http://exquery.org/ns/request";
+import module namespace session = "http://basex.org/modules/session"; :)
 declare namespace tei = "http://www.tei-c.org/ns/1.0";
 
 (:TODO make these discoverable from a central config:)
@@ -12,7 +12,7 @@ declare variable $cms:reviewBase := '/ContentBase/collection/content/review';
 declare variable $cms:xsltFormsLoc := '../static/xsltforms/xsltforms.xsl';
 
 (:Files assigned to the current user:)
-declare function cms:user-collection($user) 
+declare function cms:user-collection($user as xs:string) 
 as element(file)*
 {
  $cms:collConfig/collection/user[
@@ -32,39 +32,41 @@ declare
   %rest:path("/ContentBase/collection") 
   %output:method("html")
   %rest:cookie-param("user", "{$user}")
-function cms:collection($user) 
-as element(html)
+function cms:collection($user as xs:string?) 
+as element()
 {
-    (:TODO: handle lack of user :)
-  
-  <html>
-     <head>
-       <title>ContentBase</title>
-     </head>
-     <body>       
-       <div>Documents for: <span>{$user}</span></div>
-       {
-           for $file in cms:user-collection($user)
-           let $doc := doc(string-join(($cms:collBase, $file/@url), '/'))
-           return 
-           <div><a href='toc?url={$file/@url}'>{substring-before($file/@url/data(), '.xml')}</a>
-           {($doc//*:author[not(@role)])[1]/*:persName[@type='default'][lang('en')], $doc//*:title[@type='originalFull']/data()}
-           </div>
-       }
-     </body>
-   </html>
+    if(empty($user))
+    then 
+        <rest:redirect>/ContentBase/login</rest:redirect>
+    else
+      <html>
+         <head>
+           <title>ContentBase</title>
+         </head>
+         <body>       
+           <div>Documents for: <span>{$user}</span></div>
+           {
+               for $file in cms:user-collection($user)
+               let $doc := doc(string-join(($cms:collBase, $file/@url), '/'))
+               return 
+               <div><a href='toc?url={$file/@url}'>{substring-before($file/@url/data(), '.xml')}</a>
+               {($doc//*:author[not(@role)])[1]/*:persName[@type='default'][lang('en')], $doc//*:title[@type='originalFull']/data()}
+               </div>
+           }
+         </body>
+       </html>
 };
 
 declare 
   %rest:path("/ContentBase/toc") 
   %rest:query-param("url", "{$url}")
+  %rest:cookie-param("user", "{$user}")
   %output:method("html")
-function cms:toc($url) 
+function cms:toc($url, $user) 
 as document-node()
 {
-    (:let $thisFile := $cms:myColl[@url = $url]:)
-  
-  xslt:transform(
+    
+    xslt:transform(
              doc($cms:collBase || '/' || $url),
              doc('xsl/toc.xsl'),
              map{'sys-id':$url}
@@ -78,13 +80,17 @@ declare
   %rest:query-param("catNum", "{$catNum}")
   %rest:query-param("id", "{$id}")
   %rest:query-param("lang", "{$lang}")
+  %rest:cookie-param("user", "{$user}")
   %output:method("xml") 
   %output:omit-xml-declaration("yes")
   %output:indent("no")
-function cms:work($catNum, $id, $lang) 
-as document-node()
+function cms:work($catNum, $id, $lang, $user) 
+as item()
 {
-  let $reviewURL := $cms:reviewBase || '/' || $catNum || '.xml@' || $lang
+    if(empty($user))
+    then <rest:redirect>/ContentBase/login</rest:redirect>
+    else
+  let $reviewURL := $cms:reviewBase || '/' || $catNum || '/' || $id || '.xml@' || $lang
 
   return
   if(doc-available($reviewURL))
@@ -111,14 +117,23 @@ as document-node()
              )
 };
 
-declare function cms:get-url($url, $id, $lang)
+(:~
+    
+:)
+declare function cms:get-url(
+    $catNum as xs:string, 
+    $id as xs:string, 
+    $lang as xs:string
+    )
 as xs:string
 {
-    let $reviewURL := $cms:reviewBase || '/' || $url || '.xml@' || $lang
+    let $suffix := '/' || $catNum || '/' || $id || '.xml@' || $lang
+    let $reviewURL := $cms:reviewBase || $suffix
+    
     return 
         if(doc-available($reviewURL))
         then $reviewURL
-        else $cms:collBase || '/' || $url
+        else $cms:collBase || $suffix
 };
 
 declare 
@@ -144,7 +159,7 @@ declare
   %rest:query-param("lang", "{$lang}")
   %output:method("xml") 
   %output:omit-xml-declaration("yes")
-  %output:indent("no")
+  %output:indent("yes")
 function cms:page(
     $catNum as xs:string, 
     $id as xs:string,
@@ -152,17 +167,31 @@ function cms:page(
     ) 
 as document-node()
 {
-    (:let $reviewURL := $cms:reviewBase || '/' || $url || '.xml@' || $lang:)
+    let $reviewURL := cms:get-url($catNum, $id, $lang)
+    
     let $input := 
-        (:if(doc-available($reviewURL))
+        if(doc-available($reviewURL))
         then doc($reviewURL)
-        else:) doc($cms:contentBase || '/' || $catNum || '.xml')/tei:TEI/tei:facsimile[@xml:id=$id]
+        else cms:get-chunk($catNum, $id)
 
-  return xslt:transform(
+    return xslt:transform(
              $input,
              doc('xsl/page.xsl'),
              map{'catNum':$catNum, 'id':$id, 'lang':$lang}
              )
+};
+
+(:~
+    Returns the XML chunk for a given catalogue
+    number and @xml:id.        
+:)
+declare function cms:get-chunk(
+    $catNum as xs:string,
+    $id as xs:string
+)
+as element()
+{
+    doc($cms:contentBase || '/' || $catNum || '.xml')//*[@xml:id=$id]
 };
 
 declare 
@@ -236,12 +265,17 @@ function cms:save($body, $catNum, $id, $lang, $user)
     let $path := '/collection/content/review/' || $catNum || '/' || $id || '.xml@' || $lang
     let $doc := 
         <metadata when='{current-dateTime()}' who='{$user}'>
-            {$body/metadata/@xml:id}
+            {$body/metadata/(@docID, @chunkID) }
             {$body/*/*}
         </metadata>
     return db:replace('ContentBase', $path, $doc)
 };
 
+(:~
+    User login.
+    If successful, redirects to the user's collection.
+    Otherwise, redirects to the login page.
+:)
 declare 
   %rest:path("/ContentBase/authenticate")
   %rest:POST
@@ -249,28 +283,42 @@ declare
   %rest:form-param("username", "{$username}", "(none)")
   %rest:form-param("password", "{$password}", "(none)")
 function cms:check-login($username, $password)
-{
-  if(cms:check-user($username, $password))
-  then
+as element()
+{  
     (:TODO: add Secure for HTTPS; set Expires or Max-Age:)
-    (session:set("user", string($username)),
-        <rest:response>
-      <http:response status='302'>    
-        <http:header name="Set-Cookie" value="user={$username}; HttpOnly; path=/"/>
-        <http:header name="location" value="/ContentBase/collection"/>
+    <rest:response>
+      <http:response status='302'>{
+        if(cms:valid-credentials($username, $password))
+        then
+            (<http:header name="Set-Cookie" value="user={$username}; HttpOnly; path=/"/>,
+            <http:header name="location" value="/ContentBase/collection"/>)
+        else
+            <http:header name="location" value="/ContentBase/login"/>
+        }
       </http:response>
-    </rest:response>)
-    else "BAD!!"    (:TODO: something more graceful...:)
+    </rest:response>
   
 };
 
-(:taken from https://github.com/BaseXdb/basex/issues/1326,
-pending release of 8.6 and user:check-user() :)
-declare function cms:check-user($name as xs:string, $password as xs:string)
+(:~
+    Returns whether a user's credentials match those held by
+    the system.
+    
+    (Adapted from https://github.com/BaseXdb/basex/issues/1326,
+    pending release of v8.6 and user:check-user().)
+:)
+declare function cms:valid-credentials($name as xs:string, $password as xs:string)
 as xs:boolean
 {
-  let $pw := user:list-details($name)/password[@algorithm = 'salted-sha256']
-  let $hash := lower-case(string(xs:hexBinary(hash:sha256($pw/salt || $password))))
-  return $pw/hash = $hash
+    
+        (:
+        FIXME: fails on invalid or unknown username
+        try{user:exists($name)}
+        catch user:name{false()},:)
+    
+        let $pw := user:list-details($name)/password[@algorithm = 'salted-sha256']
+        let $hash := lower-case(string(xs:hexBinary(hash:sha256($pw/salt || $password))))
+        return $pw/hash = $hash
+    
   
 };
