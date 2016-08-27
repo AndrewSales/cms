@@ -39,22 +39,64 @@ as element()
     then 
         <rest:redirect>/ContentBase/login</rest:redirect>
     else
-      <html>
-         <head>
-           <title>ContentBase</title>
-         </head>
-         <body>       
-           <div>Documents for: <span>{$user}</span></div>
-           {
+    <html>
+   
+   
+   <head>
+      <meta http-equiv="X-UA-Compatible" content="IE=edge"></meta>
+      <meta name="viewport" content="width=device-width, initial-scale=1"></meta>
+      <meta name="description" content=""></meta>
+      <meta name="author" content=""></meta>
+      
+      <title>Collection</title>      
+      
+      <link rel="stylesheet" 
+         href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" 
+         integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" 
+         crossorigin="anonymous"/>
+   </head>
+   
+   <body>
+      
+      <div class="container">
+         <div class="page-header">
+            <div class="text-right"><em>Logged in as:</em> <span>{$user}</span></div>
+            <h1>Collection</h1>
+         </div>
+         
+         <table class="table table-condensed table-hover ">
+            <thead>
+               <tr class='text-nowrap'>
+                  <th>Catalogue no.</th>
+                  <th>Author</th>
+                  <th>Title</th>
+                  <!--<th>Last modified</th>-->
+               </tr>
+            </thead>
+            <tbody>{
                for $file in cms:user-collection($user)
-               let $doc := doc(string-join(($cms:collBase, $file/@url), '/'))
-               return 
-               <div><a href='toc?url={$file/@url}'>{substring-before($file/@url/data(), '.xml')}</a>
-               {($doc//*:author[not(@role)])[1]/*:persName[@type='default'][lang('en')], $doc//*:title[@type='originalFull']/data()}
-               </div>
-           }
-         </body>
-       </html>
+               let $doc := doc(($cms:collBase || '/' || $file/@url))
+               let $id := $doc/*/@xml:id/data()
+               let $titles := $doc//tei:title[@corresp]
+               return
+               <tr valign='bottom'>
+                  <th scope="row"><a href='toc?url={$file/@url}'>{$id}</a></th>
+                  <td class='text-nowrap'>{($doc//tei:author[not(@role)])[1]/tei:persName[@type='default'][lang('en')]/data()}</td>
+                  <td>{if($titles)
+                    then 
+                        for $title in $titles
+                        return
+                        <div><a href='work?catNum={$id}&amp;id={substring-after($title/@corresp, '#')}&amp;lang=en'>{$title/data()}</a></div>
+                    else $doc//tei:title[@type='originalFull']/data()}</td>
+                  <!--<td>{collection($cms:reviewBase||'/'||$id||'/'||$id||'.xml@en')/*/@when/data()}</td>-->
+               </tr>
+            }</tbody>
+         </table>
+      </div>
+      
+      
+   </body>
+</html>
 };
 
 declare 
