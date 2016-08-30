@@ -211,16 +211,59 @@ as document-node()
 {
     let $reviewURL := cms:get-url($catNum, $id, $lang)
     
-    let $input := 
-        if(doc-available($reviewURL))
-        then doc($reviewURL)
-        else cms:get-chunk($catNum, $id)
+    return
+    if(doc-available($reviewURL))
+        then cms:pageFromMetadata( 
+            doc($reviewURL),
+            $catNum,
+            $id,
+            $lang
+            )
+        else 
+            cms:pageFromTEI(
+                cms:get-chunk($catNum, $id),
+                $catNum,
+                $id,
+                $lang
+            )
+};
 
-    return xslt:transform(
-             $input,
-             doc('xsl/page.xsl'),
-             map{'catNum':$catNum, 'id':$id, 'lang':$lang}
-             )
+declare function cms:pageFromMetadata(
+    $doc as document-node(),
+    $catNum as xs:string, 
+    $id as xs:string,
+    $lang as xs:string
+)
+as document-node()
+{
+    xslt:transform(
+        $doc,
+        doc('xsl/page.xsl'),
+        map{'catNum':$catNum, 'id':$id, 'lang':$lang}
+    )
+};
+
+declare function cms:pageFromTEI(
+    $page as element(),
+    $catNum as xs:string, 
+    $id as xs:string,
+    $lang as xs:string
+)
+as document-node()
+{
+    (:corresponding pb for this facsimile:)
+    let $pb := $page/root()//tei:pb[substring-after(@facs, '#') = $id]
+    
+    return
+    xslt:transform(
+        $page,
+        doc('xsl/page.xsl'),
+        map{'catNum':$catNum, 'id':$id, 'lang':$lang,
+        'pageNum':$pb/@n,
+        'nextPageID':string($pb/following::tei:pb[1]/@facs),
+        'prevPageID':string($pb/preceding::tei:pb[1]/@facs)}
+    )
+    
 };
 
 (:~
