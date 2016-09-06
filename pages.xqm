@@ -61,6 +61,7 @@ as element()
       <div class="container">
          <div class="page-header">
             <div class="text-right"><em>Logged in as:</em> <span>{$user}</span></div>
+            <div class="text-right"><a href='/ContentBase/logout'>Logout</a></div>
             <h1>Collection</h1>
          </div>
          
@@ -105,13 +106,16 @@ declare
   %rest:cookie-param("user", "{$user}")
   %output:method("html")
 function cms:toc($url, $user) 
-as document-node()
+as item()
 {
-    
+ 
+    if(empty($user))
+    then <rest:redirect>/ContentBase/login</rest:redirect>
+    else
     xslt:transform(
              doc($cms:collBase || '/' || $url),
              doc('xsl/toc.xsl'),
-             map{'sys-id':$url}
+             map{'sys-id':$url, 'user':$user}
              )
 };
 
@@ -199,19 +203,24 @@ declare
   %rest:query-param("catNum", "{$catNum}")
   %rest:query-param("id", "{$id}")
   %rest:query-param("lang", "{$lang}")
+  %rest:cookie-param("user", "{$user}")
   %output:method("xml") 
   %output:omit-xml-declaration("yes")
   %output:indent("yes")
 function cms:page(
     $catNum as xs:string, 
     $id as xs:string,
-    $lang as xs:string
+    $lang as xs:string,
+    $user as xs:string?
     ) 
-as document-node()
+as item()
 {
     let $reviewURL := cms:get-url($catNum, $id, $lang)
     
     return
+    if(empty($user))
+    then <rest:redirect>/ContentBase/login</rest:redirect>
+    else
     if(doc-available($reviewURL))
         then cms:pageFromMetadata( 
             doc($reviewURL),
@@ -254,16 +263,17 @@ as document-node()
     (:corresponding pb for this facsimile:)
     let $pb := $page/root()//tei:pb[substring-after(@facs, '#') = $id]
     
-    return
+    return (:document{<html>no={$pb/following::tei:pb[1]/@facs/data()}</html>}:)
     xslt:transform(
         $page,
         doc('xsl/page.xsl'),
-        map{'catNum':$catNum, 'id':$id, 'lang':$lang,
+        map{
+        'catNum':$catNum, 'id':$id, 'lang':$lang,
         'pageNum':$pb/@n,
-        'nextPageID':string($pb/following::tei:pb[1]/@facs),
-        'prevPageID':string($pb/preceding::tei:pb[1]/@facs)}
-    )
-    
+        'nextPageID':substring-after($pb/following::tei:pb[1]/@facs, '#'),
+        'prevPageID':substring-after($pb/preceding::tei:pb[1]/@facs, '#')
+        }
+    )  
 };
 
 (:~
@@ -337,6 +347,23 @@ function cms:login()
 };
 
 declare 
+  %rest:path("/ContentBase/logout")
+  %output:method("html")
+  %rest:cookie-param("user", "{$user}")
+function cms:logout($user as xs:string?)
+as element()
+{  
+    (:TODO: add Secure for HTTPS:)
+    <rest:response>
+      <http:response status='302'>
+        <http:header name="Set-Cookie" value="user={$user}; HttpOnly; path=/; Max-Age=0"/>
+        <http:header name="location" value="/ContentBase/login"/>
+      </http:response>
+    </rest:response>
+  
+};
+
+declare 
   %updating
   %rest:path("/ContentBase/save")
   %rest:POST("{$body}")
@@ -350,7 +377,7 @@ function cms:save($body, $catNum, $id, $lang, $user)
     let $path := '/collection/content/review/' || $catNum || '/' || $id || '.xml@' || $lang
     let $doc := 
         <metadata when='{current-dateTime()}' who='{$user}'>
-            {$body/metadata/(@docID, @chunkID) }
+            {$body/metadata/(@* except @when, @who) }
             {$body/*/*}
         </metadata>
     return db:replace('ContentBase', $path, $doc)
