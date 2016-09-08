@@ -78,17 +78,21 @@ as element()
                for $file in cms:user-collection($user)
                let $doc := doc(($cms:collBase || '/' || $file/@url))
                let $id := $doc/*/@xml:id/data()
-               let $titles := $doc//tei:title[@corresp]
                return
                <tr valign='bottom'>
                   <th scope="row"><a href='toc?url={$file/@url}'>{$id}</a></th>
                   <td class='text-nowrap'>{($doc//tei:author[not(@role)])[1]/tei:persName[@type='default'][lang('en')]/data()}</td>
-                  <td>{if($titles)
+                  <td>{
+                    let $titles := $doc//tei:title[@corresp]
+                  
+                  return if($titles)
                     then 
                         for $title in $titles
-                        return
+                        return 
                         <div><a href='work?catNum={$id}&amp;id={substring-after($title/@corresp, '#')}&amp;lang=en'>{$title/data()}</a></div>
-                    else $doc//tei:title[@type='originalFull']/data()}</td>
+                    else 
+                        <div><a href='work?catNum={$id}&amp;id={$id}&amp;lang=en'>{$doc//tei:title[@type='originalFull']/data()}</a></div>
+                }</td>
                   <!--<td>{collection($cms:reviewBase||'/'||$id||'/'||$id||'.xml@en')/*/@when/data()}</td>-->
                </tr>
             }</tbody>
