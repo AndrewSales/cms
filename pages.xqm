@@ -269,7 +269,7 @@ as document-node()
         doc('xsl/page.xsl'),
         map{
         'catNum':$catNum, 'id':$id, 'lang':$lang,
-        'pageNum':$pb/@n,
+        'pageNum':string($pb/@n), (:if absent, use empty string:)
         'nextPageID':substring-after($pb/following::tei:pb[1]/@facs, '#'),
         'prevPageID':substring-after($pb/preceding::tei:pb[1]/@facs, '#')
         }
