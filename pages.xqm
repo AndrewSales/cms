@@ -78,10 +78,14 @@ as element()
                for $file in cms:user-collection($user)
                let $doc := doc(($cms:collBase || '/' || $file/@url))
                let $id := $doc/*/@xml:id/data()
+               order by xs:integer(substring-after($id, 'ARC_'))
                return
                <tr valign='bottom'>
-                  <th scope="row"><a href='toc?url={$file/@url}'>{$id}</a></th>
-                  <td class='text-nowrap'>{($doc//tei:author[not(@role)])[1]/tei:persName[@type='default'][lang('en')]/data()}</td>
+                  <th scope="row" title='View ToC'><a href='toc?url={$file/@url}'>{$id}</a></th>
+                  <td class='text-nowrap'>{
+                    for $name in ($doc//tei:author[not(@role)])/tei:persName[@type='default'][lang('en')]/data()
+                    return <div>{$name}</div>}
+                  </td>
                   <td>{
                     let $titles := $doc//tei:title[@corresp]
                   
@@ -89,9 +93,9 @@ as element()
                     then 
                         for $title in $titles
                         return 
-                        <div><a href='work?catNum={$id}&amp;id={substring-after($title/@corresp, '#')}&amp;lang=en'>{$title/data()}</a></div>
+                        <div title='View this title'><a href='work?catNum={$id}&amp;id={substring-after($title/@corresp, '#')}&amp;lang=en'>{$title/data()}</a></div>
                     else 
-                        <div><a href='work?catNum={$id}&amp;id={$id}&amp;lang=en'>{$doc//tei:title[@type='originalFull']/data()}</a></div>
+                        <div title='View this title'><a href='work?catNum={$id}&amp;id={$id}&amp;lang=en'>{$doc//tei:title[@type='originalFull']/data()}</a></div>
                 }</td>
                   <!--<td>{collection($cms:reviewBase||'/'||$id||'/'||$id||'.xml@en')/*/@when/data()}</td>-->
                </tr>
