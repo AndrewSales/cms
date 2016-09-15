@@ -50,10 +50,8 @@ as element()
       
       <title>Collection</title>      
       
-      <link rel="stylesheet" 
-         href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" 
-         integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" 
-         crossorigin="anonymous"/>
+      <link rel="stylesheet"
+                    href="../static/bootstrap.min.css"/>
    </head>
    
    <body>
@@ -155,7 +153,8 @@ as item()
              map{
                 'id':$id,
                 'lang':$lang,
-                'xsltformsStylesheet':$cms:xsltFormsLoc
+                'xsltformsStylesheet':$cms:xsltFormsLoc,
+                'user':$user
                 }
              )
     else
@@ -166,7 +165,8 @@ as item()
                 'sys-id':$catNum, 
                 'id':$id, 
                 'xsltformsStylesheet':$cms:xsltFormsLoc,
-                'lang':$lang
+                'lang':$lang,
+                'user':$user
                 }
              )
 };
