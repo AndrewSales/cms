@@ -1,12 +1,13 @@
 xquery version "3.0";
 module namespace cms = "http://www.andrewsales.com/xquery";
-(: import module namespace request = "http://exquery.org/ns/request";
-import module namespace session = "http://basex.org/modules/session"; :)
+(: import module namespace request = "http://exquery.org/ns/request";:)
+import module namespace session = "http://basex.org/modules/session";
 declare namespace tei = "http://www.tei-c.org/ns/1.0";
 
 (:TODO make these discoverable from a central config:)
 declare variable $cms:collConfig := doc('/ContentBase/collection/config/user-edit-permissions.xml');
 declare variable $cms:collBase := $cms:collConfig/collection/@xml:base;
+declare variable $cms:collName := $cms:collConfig/collection/@name/data();
 declare variable $cms:contentBase := '/ContentBase/collection/content/main';
 declare variable $cms:reviewBase := '/ContentBase/collection/content/review';
 declare variable $cms:xsltFormsLoc := '../static/xsltforms/xsltforms.xsl';
@@ -35,7 +36,9 @@ declare
 function cms:collection($user as xs:string?) 
 as element()
 {
-    if(empty($user))
+
+   
+   if(empty($user))
     then 
         <rest:redirect>/ContentBase/login</rest:redirect>
     else
@@ -48,7 +51,7 @@ as element()
       <meta name="description" content=""></meta>
       <meta name="author" content=""></meta>
       
-      <title>Collection</title>      
+      <title>{$cms:collName}</title>      
       
       <link rel="stylesheet"
                     href="../static/bootstrap.min.css"/>
@@ -60,7 +63,7 @@ as element()
          <div class="page-header">
             <div class="text-right"><em>Logged in as:</em> <span>{$user}</span></div>
             <div class="text-right"><a href='/ContentBase/logout'>Logout</a></div>
-            <h1>Collection</h1>
+            <h1>{$cms:collName}</h1>
          </div>
          
          <table class="table table-condensed table-hover ">
@@ -69,7 +72,7 @@ as element()
                   <th>Catalogue no.</th>
                   <th>Author</th>
                   <th>Title</th>
-                  <!--<th>Last modified</th>-->
+                  <th>Last reviewed</th>
                </tr>
             </thead>
             <tbody>{
@@ -81,8 +84,9 @@ as element()
                <tr valign='bottom'>
                   <th scope="row" title='View ToC'><a href='toc?url={$file/@url}'>{$id}</a></th>
                   <td class='text-nowrap'>{
-                    for $name in ($doc//tei:author[not(@role)])/tei:persName[@type='default'][lang('en')]/data()
-                    return <div>{$name}</div>}
+                    for $author in ($doc//tei:author[not(@role)])
+                    let $names := $author/tei:persName[@type='default'][lang('en')]/*
+                    return <div>{string-join($names, ' ')}</div>}
                   </td>
                   <td>{
                     let $titles := $doc//tei:title[@corresp]
@@ -95,7 +99,11 @@ as element()
                     else 
                         <div title='View this title'><a href='work?catNum={$id}&amp;id={$id}&amp;lang=en'>{$doc//tei:title[@type='originalFull']/data()}</a></div>
                 }</td>
-                  <!--<td>{collection($cms:reviewBase||'/'||$id||'/'||$id||'.xml@en')/*/@when/data()}</td>-->
+                  <td>{let $latest := max(
+                  for $d in collection($cms:reviewBase||'/'||$id)/*/@when
+                  return xs:dateTime($d)
+                  )
+                  return format-dateTime($latest, "[D01]/[M01]/[Y01] at [H01]:[m01]")}</td>
                </tr>
             }</tbody>
          </table>
@@ -121,7 +129,11 @@ as item()
     xslt:transform(
              doc($cms:collBase || '/' || $url),
              doc('xsl/toc.xsl'),
-             map{'sys-id':$url, 'user':$user}
+             map{
+             'sys-id':$url, 
+             'user':$user,
+             'collection':$cms:collName
+             }
              )
 };
 
@@ -234,14 +246,16 @@ as item()
             doc($reviewURL),
             $catNum,
             $id,
-            $lang
+            $lang,
+            $user
             )
         else 
             cms:pageFromTEI(
                 cms:get-chunk($catNum, $id),
                 $catNum,
                 $id,
-                $lang
+                $lang,
+                $user
             )
 };
 
@@ -249,14 +263,15 @@ declare function cms:pageFromMetadata(
     $doc as document-node(),
     $catNum as xs:string, 
     $id as xs:string,
-    $lang as xs:string
+    $lang as xs:string,
+    $user as xs:string
 )
 as document-node()
 {
     xslt:transform(
         $doc,
         doc('xsl/page.xsl'),
-        map{'catNum':$catNum, 'id':$id, 'lang':$lang}
+        map{'catNum':$catNum, 'id':$id, 'lang':$lang, 'user':$user}
     )
 };
 
@@ -264,7 +279,8 @@ declare function cms:pageFromTEI(
     $page as element(),
     $catNum as xs:string, 
     $id as xs:string,
-    $lang as xs:string
+    $lang as xs:string,
+    $user as xs:string
 )
 as document-node()
 {
@@ -279,7 +295,8 @@ as document-node()
         'catNum':$catNum, 'id':$id, 'lang':$lang,
         'pageNum':string($pb/@n), (:if absent, use empty string:)
         'nextPageID':substring-after($pb/following::tei:pb[1]/@facs, '#'),
-        'prevPageID':substring-after($pb/preceding::tei:pb[1]/@facs, '#')
+        'prevPageID':substring-after($pb/preceding::tei:pb[1]/@facs, '#'),
+        'user':$user
         }
     )  
 };
@@ -419,7 +436,7 @@ declare
   %rest:form-param("username", "{$username}", "(none)")
   %rest:form-param("password", "{$password}", "(none)")
 function cms:check-login($username, $password)
-as element()
+as element(rest:response)
 {  
     (:TODO: add Secure for HTTPS; set Expires or Max-Age:)
     <rest:response>
